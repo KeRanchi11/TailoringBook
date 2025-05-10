@@ -1,5 +1,7 @@
 # Getting Started with Create React App
 
+# THIS PROJECT IS A TAILORING BOOK THAT CAN HELP ANY TAILOR IN WORLD
+
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
 ## Available Scripts

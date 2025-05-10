@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Button, Accordion, Card, Alert } from 'react-bootstrap';
+import { Form, Button, Accordion, Card, Alert, Modal } from 'react-bootstrap';
+import { MdDeleteForever } from "react-icons/md";
 import '../styles/CustomerManager.css';
 
 const CustomerManager = () => {
@@ -10,8 +11,10 @@ const CustomerManager = () => {
     const [customerMeasurements, setCustomerMeasurements] = useState({});
     const [errorMessage, setErrorMessage] = useState('');
     const [inputError, setInputError] = useState('');
-
     const [editingMeasurements, setEditingMeasurements] = useState({});
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [customerToDelete, setCustomerToDelete] = useState(null);
+    const [editMode, setEditMode] = useState({}); // State برای مدیریت حالت ویرایش
 
     const API_URL = 'http://localhost/TailoringBook/src/backend/CustomerManager.php';
 
@@ -43,7 +46,7 @@ const CustomerManager = () => {
             return;
         }
 
-        setInputError(''); // پاک کردن خطا در صورت وجود
+        setInputError('');
         try {
             const response = await fetch(API_URL, {
                 method: 'POST',
@@ -65,6 +68,44 @@ const CustomerManager = () => {
         }
     };
 
+    const handleDeleteClick = (customer) => {
+        setCustomerToDelete(customer);
+        setShowDeleteModal(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!customerToDelete) return;
+
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'delete_customer', customer_id: customerToDelete.id }),
+            });
+            const text = await response.text();
+            console.log('Delete customer response:', text);
+            const data = text ? JSON.parse(text) : {};
+            if (response.ok && data.success) {
+                setCustomers(customers.filter(customer => customer.id !== customerToDelete.id));
+                const updatedMeasurements = { ...customerMeasurements };
+                Object.keys(updatedMeasurements).forEach(key => {
+                    if (key.startsWith(`${customerToDelete.id}-`)) {
+                        delete updatedMeasurements[key];
+                    }
+                });
+                setCustomerMeasurements(updatedMeasurements);
+                setErrorMessage('');
+            } else {
+                setErrorMessage(data.message || 'خطا در حذف مشتری');
+            }
+        } catch (error) {
+            setErrorMessage('خطا در حذف مشتری: ' + error.message);
+        } finally {
+            setShowDeleteModal(false);
+            setCustomerToDelete(null);
+        }
+    };
+
     const fetchMeasurements = async (customerId, clothingTypeId) => {
         const key = `${customerId}-${clothingTypeId}`;
         try {
@@ -81,16 +122,19 @@ const CustomerManager = () => {
                 });
                 setCustomerMeasurements({ ...customerMeasurements, [key]: measurements });
                 setEditingMeasurements({ ...editingMeasurements, [key]: editingValues });
+                setEditMode({ ...editMode, [key]: true }); // فعال کردن حالت ویرایش هنگام دریافت اندازه‌ها
                 setErrorMessage('');
             } else {
                 setErrorMessage(data.message || 'خطا در دریافت اندازه‌ها');
                 setCustomerMeasurements({ ...customerMeasurements, [key]: [] });
                 setEditingMeasurements({ ...editingMeasurements, [key]: {} });
+                setEditMode({ ...editMode, [key]: true });
             }
         } catch (error) {
             setErrorMessage('خطا در دریافت اندازه‌ها: ' + error.message);
             setCustomerMeasurements({ ...customerMeasurements, [key]: [] });
             setEditingMeasurements({ ...editingMeasurements, [key]: {} });
+            setEditMode({ ...editMode, [key]: true });
         }
     };
 
@@ -131,6 +175,7 @@ const CustomerManager = () => {
             const data = text ? JSON.parse(text) : {};
             if (response.ok && data.success) {
                 await fetchMeasurements(customerId, clothingTypeId);
+                setEditMode({ ...editMode, [key]: false }); // غیرفعال کردن حالت ویرایش پس از ذخیره
                 setErrorMessage('');
             } else {
                 setErrorMessage(data.message || 'خطا در ذخیره اندازه‌ها');
@@ -138,6 +183,10 @@ const CustomerManager = () => {
         } catch (error) {
             setErrorMessage('خطا در ذخیره اندازه‌ها: ' + error.message);
         }
+    };
+
+    const enableEditMode = (key) => {
+        setEditMode({ ...editMode, [key]: true });
     };
 
     const filteredCustomers = customers.filter(customer =>
@@ -189,7 +238,7 @@ const CustomerManager = () => {
                         placeholder="جستجو بر اساس نام مشتری"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="custom-input"
+                        className="custom-input modern-input"
                     />
                 </div>
                 <div className="position-relative flex-grow-1">
@@ -198,10 +247,10 @@ const CustomerManager = () => {
                         placeholder="اضافه کردن مشتری"
                         value={newCustomerName}
                         onChange={(e) => setNewCustomerName(e.target.value)}
-                        className="custom-input"
+                        className="custom-input modern-input"
                         onKeyPress={(e) => e.key === 'Enter' && addCustomer()}
                     />
-                    <Button className="floating-button" variant="primary" onClick={addCustomer}>
+                    <Button className="floating-button modern-button" variant="primary" onClick={addCustomer}>
                         اضافه کردن
                     </Button>
                 </div>
@@ -212,24 +261,35 @@ const CustomerManager = () => {
                         <Accordion.Header className="accordion-header">
                             <div className="d-flex justify-content-between align-items-center w-100">
                                 <span>{customer.name}</span>
-                                <div>
-                                    {clothingTypes.map((clothingType) => (
-                                        <span
-                                            key={clothingType.id}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                fetchMeasurements(customer.id, clothingType.id);
-                                                setActiveClothingMeasurement({
-                                                    ...activeClothingMeasurement,
-                                                    [customer.id]: clothingType.id,
-                                                });
-                                            }}
-                                            className="ms-2 btn btn-secondary"
-                                            style={{ cursor: 'pointer' }}
-                                        >
-                                            {clothingType.name}
-                                        </span>
-                                    ))}
+                                <div className="d-flex align-items-center">
+                                    <MdDeleteForever
+                                        size={40}
+                                        className="text-red-600 me-2 cursor-pointer"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteClick(customer);
+                                        }}
+                                        title="حذف مشتری"
+                                    />
+                                    <div>
+                                        {clothingTypes.map((clothingType) => (
+                                            <span
+                                                key={clothingType.id}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    fetchMeasurements(customer.id, clothingType.id);
+                                                    setActiveClothingMeasurement({
+                                                        ...activeClothingMeasurement,
+                                                        [customer.id]: clothingType.id,
+                                                    });
+                                                }}
+                                                className="ms-2 btn btn-secondary modern-button"
+                                                style={{ cursor: 'pointer' }}
+                                            >
+                                                {clothingType.name}
+                                            </span>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         </Accordion.Header>
@@ -239,8 +299,8 @@ const CustomerManager = () => {
                                     customerMeasurements[`${customer.id}-${activeClothingMeasurement[customer.id]}`]?.length > 0 ? (
                                         <>
                                             {customerMeasurements[`${customer.id}-${activeClothingMeasurement[customer.id]}`].map((measurement, index) => (
-                                                <div key={index} className="mb-2 d-flex align-items-center">
-                                                    <Form.Label className="me-2 mb-0" style={{ width: '150px' }}>
+                                                <div key={index} className="mb-3 d-flex align-items-center modern-measurement-row">
+                                                    <Form.Label className="me-3 mb-0 modern-label" style={{ width: '180px' }}>
                                                         {measurement.name}:
                                                     </Form.Label>
                                                     <Form.Control
@@ -254,19 +314,33 @@ const CustomerManager = () => {
                                                             )
                                                         }
                                                         placeholder="مقدار را وارد کنید"
-                                                        style={{ width: '150px' }}
+                                                        className={editMode[`${customer.id}-${activeClothingMeasurement[customer.id]}`] ? 'modern-input' : 'modern-input readonly-input'}
+                                                        readOnly={!editMode[`${customer.id}-${activeClothingMeasurement[customer.id]}`]}
+                                                        style={{ width: '180px' }}
                                                     />
                                                 </div>
                                             ))}
-                                            <Button
-                                                variant="success"
-                                                onClick={() =>
-                                                    saveMeasurements(customer.id, activeClothingMeasurement[customer.id])
-                                                }
-                                                className="mt-3"
-                                            >
-                                                ذخیره اندازه‌ها
-                                            </Button>
+                                            <div className="mt-3 d-flex gap-2">
+                                                {editMode[`${customer.id}-${activeClothingMeasurement[customer.id]}`] ? (
+                                                    <Button
+                                                        variant="success"
+                                                        onClick={() =>
+                                                            saveMeasurements(customer.id, activeClothingMeasurement[customer.id])
+                                                        }
+                                                        className="modern-button"
+                                                    >
+                                                        ذخیره اندازه‌ها
+                                                    </Button>
+                                                ) : (
+                                                    <Button
+                                                        variant="primary"
+                                                        onClick={() => enableEditMode(`${customer.id}-${activeClothingMeasurement[customer.id]}`)}
+                                                        className="modern-button"
+                                                    >
+                                                        ویرایش اندازه‌ها
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </>
                                     ) : (
                                         <p>هیچ اندازه‌ای برای این نوع لباس یافت نشد. لطفاً دیتابیس را بررسی کنید.</p>
@@ -285,6 +359,23 @@ const CustomerManager = () => {
                     <div className="text-center mt-3">هیچ مشتری ثبت نشده است.</div>
                 )}
             </Accordion>
+
+            <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered>
+                <Modal.Header closeButton>
+                    <Modal.Title>تأیید حذف مشتری</Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    آیا مطمئن هستید که می‌خواهید مشتری <strong>{customerToDelete?.name}</strong> را حذف کنید؟
+                </Modal.Body>
+                <Modal.Footer>
+                    <Button variant="secondary" onClick={() => setShowDeleteModal(false)} className="modern-button">
+                        انصراف
+                    </Button>
+                    <Button variant="danger" onClick={confirmDelete} className="modern-button">
+                        تأیید
+                    </Button>
+                </Modal.Footer>
+            </Modal>
         </div>
     );
 };

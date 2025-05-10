@@ -49,7 +49,6 @@ switch ($method) {
 
             $name = trim($data['name']);
             
-            // بررسی وجود مشتری با همین نام
             $stmt = $conn->prepare("SELECT id FROM customers WHERE name = ?");
             $stmt->bind_param("s", $name);
             $stmt->execute();
@@ -134,6 +133,36 @@ switch ($method) {
             }
 
             sendResponse(["success" => true, "message" => "Measurements saved successfully"]);
+        } elseif ($data['action'] === 'delete_customer') {
+            if (!isset($data['customer_id'])) {
+                sendResponse(["success" => false, "message" => "Customer ID is required"], 400);
+            }
+
+            $customer_id = (int)$data['customer_id'];
+
+            // حذف اندازه‌های مشتری از جدول measurements
+            $stmt = $conn->prepare("DELETE FROM measurements WHERE customer_id = ?");
+            $stmt->bind_param("i", $customer_id);
+            if (!$stmt->execute()) {
+                error_log("Error deleting measurements: " . $conn->error);
+                sendResponse(["success" => false, "message" => "Error deleting measurements: " . $conn->error], 500);
+            }
+            $stmt->close();
+
+            // حذف مشتری از جدول customers
+            $stmt = $conn->prepare("DELETE FROM customers WHERE id = ?");
+            $stmt->bind_param("i", $customer_id);
+            if ($stmt->execute()) {
+                if ($stmt->affected_rows > 0) {
+                    sendResponse(["success" => true, "message" => "Customer deleted successfully"]);
+                } else {
+                    sendResponse(["success" => false, "message" => "Customer not found"], 404);
+                }
+            } else {
+                error_log("Error deleting customer: " . $conn->error);
+                sendResponse(["success" => false, "message" => "Error deleting customer: " . $conn->error], 500);
+            }
+            $stmt->close();
         } else {
             sendResponse(["success" => false, "message" => "Invalid action"], 400);
         }
@@ -144,7 +173,6 @@ switch ($method) {
             $customer_id = (int)$_GET['customer_id'];
             $clothing_type_id = (int)$_GET['clothing_type_id'];
 
-            // دریافت اندازه‌های پیش‌فرض از clothing_measurements
             $stmt = $conn->prepare(
                 "SELECT measurements_list.name, measurements_list.id 
                  FROM clothing_measurements 
@@ -161,7 +189,6 @@ switch ($method) {
             }
             $stmt->close();
 
-            // دریافت اندازه‌های ثبت‌شده از measurements
             $stmt = $conn->prepare(
                 "SELECT measurements_list.name, measurements.value, measurements.measurement_id 
                  FROM measurements 
@@ -172,7 +199,6 @@ switch ($method) {
             $stmt->execute();
             $result = $stmt->get_result();
 
-            // ادغام اندازه‌های ثبت‌شده با اندازه‌های پیش‌فرض
             while ($row = $result->fetch_assoc()) {
                 if (isset($default_measurements[$row['measurement_id']])) {
                     $default_measurements[$row['measurement_id']]['value'] = $row['value'];

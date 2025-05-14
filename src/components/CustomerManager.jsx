@@ -222,7 +222,7 @@ const CustomerManager = () => {
         { id: 24, name: 'قد شلوار' },
         { id: 25, name: 'قد فاق' },
         { id: 26, name: 'دور ران' },
-        { id: 27, name: 'قد دور مچ پا' },
+        { id: 27, name: 'دور مچ پا' },
         { id: 28, name: 'دور زانو' },
         { id: 29, name: 'قد زانو' },
     ];
